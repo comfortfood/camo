@@ -1,12 +1,21 @@
 using System;
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
 [ExecuteInEditMode]
 public class GameController : MonoBehaviour
 {
+    private struct PlaygroundRefs
+    {
+        public Renderer Score;
+        public Renderer BgTop;
+        public Renderer[] Fg;
+        public Renderer[] Bg;
+        public Renderer BgBottom;
+        public Renderer Z;
+    }
+
     [Serializable]
     public struct ColorSet
     {
@@ -26,132 +35,306 @@ public class GameController : MonoBehaviour
         })
     };
 
-    public GameObject[] playground = { };
+    public GameObject playground;
+    private PlaygroundRefs pgRefs;
     public GameObject mockGyroscope;
-
-    private Renderer _renderer;
-    private MaterialPropertyBlock propBlock;
 
     // config
     private int colorSet;
-    private float startTime;
-    private int stripes = 2;
+    private int cells = 3;
     private const int Notches = 5;
     private const int InputTypes = 3;
     private const int HoldForToScore = 30;
-    private const float CloseEnough = 0.2F;
-    private const int RainbowRepeats = 4;
+    private const float CloseEnough = 0.2f;
     private const int RainbowRepeatsPitch = 3;
+    private const int RainbowRepeatsRoll = 4;
+    private const int RainbowRepeatsYaw = 5;
     private int score;
-    private int target1 = -1;
-    private int target2 = -1;
-    private int target3 = -1;
-    private int chosenInput1 = -1;
-    private int chosenInput2 = -1;
-    private int chosenInput3 = -1;
+    private int[] targets = { };
+    private int[] chosenInputs = { };
     private int heldFor;
     private float[] rawInputs;
     private static readonly int Color1 = Shader.PropertyToID("_Color");
+    private bool scorePushed;
 
     public void Start()
     {
-        startTime = Time.realtimeSinceStartup;
         Input.gyro.enabled = true;
+        // Disable screen dimming
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
     }
 
     public void Update()
     {
-        stripes = 3;
-        var timeNow = Time.realtimeSinceStartup;
-        colorSet = (int)(timeNow - startTime) % colorSets.Length;
-        rawInputs = RawInputs.Get(rawInputs, mockGyroscope);
-
-        if (colorSets.Length <= 0 || colorSets[colorSet].colors.Length <= 5) return;
-        foreach (var obj in playground)
+        var isChangeLayout = false;
+        if (pgRefs.BgTop == null || pgRefs.Bg.Length != cells)
         {
-            var trans = obj.transform;
+            isChangeLayout = true;
+            DeleteRenderers();
+            BuildMeshes();
+        }
 
-            var childTrans = trans.Find("Text 01");
-            var tmp = childTrans.GetComponent<TextMeshPro>();
-            tmp.color = colorSets[colorSet].colors[0];
-
-            childTrans = trans.Find("Text 02");
-            tmp = childTrans.GetComponent<TextMeshPro>();
-            tmp.color = colorSets[colorSet].colors[0];
-
-            childTrans = trans.Find("Fg 01");
-            if (childTrans == null)
+        if (chosenInputs.Length == 0 || heldFor >= HoldForToScore || scorePushed || isChangeLayout)
+        {
+            if (heldFor >= HoldForToScore || scorePushed)
             {
-                BuildMeshes(trans);
+                score++;
+                Handheld.Vibrate();
             }
 
-            float tmpRr = chosenInput1 == 0 ? RainbowRepeatsPitch : RainbowRepeats;
-            var val1 = GetVal(rawInputs, chosenInput1, tmpRr, Notches);
+            heldFor = 0;
+            scorePushed = false;
 
-            tmpRr = chosenInput2 == 0 ? RainbowRepeatsPitch : RainbowRepeats;
-            var val2 = GetVal(rawInputs, chosenInput2, tmpRr, Notches);
-
-            tmpRr = chosenInput3 == 0 ? RainbowRepeatsPitch : RainbowRepeats;
-            var val3 = GetVal(rawInputs, chosenInput3, tmpRr, Notches);
-
-            if (chosenInput1 != -1 && chosenInput2 != -1 && chosenInput3 != -1)
+            targets = new int[cells];
+            for (var i = 0; i < cells; i++)
             {
-                if ((Mathf.Abs(val1 - target1) <= CloseEnough ||
-                     (target1 == 0 && Mathf.Abs(val1 - Notches) <= CloseEnough)) &&
-                    (Mathf.Abs(val2 - target2) <= CloseEnough ||
-                     (target2 == 0 && Mathf.Abs(val2 - Notches) <= CloseEnough)) &&
-                    (Mathf.Abs(val3 - target3) <= CloseEnough ||
-                     (target3 == 0 && Mathf.Abs(val3 - Notches) <= CloseEnough)))
-                {
-                    heldFor++;
-                    // Debug.Log("heldFor: " + heldFor);
-                }
-                else
-                {
-                    heldFor = 0;
-                }
+                targets[i] = RandIntn(Notches);
             }
 
-            if ((chosenInput1 == -1 && chosenInput2 == -1 && chosenInput3 == -1) || heldFor >= HoldForToScore)
+            chosenInputs = new int[cells];
+            for (var i = 0; i < cells; i++)
             {
-                if (heldFor >= HoldForToScore)
-                {
-                    score++;
-                    Handheld.Vibrate();
-                }
-
-                heldFor = 0;
-
-                target1 = RandIntn(Notches);
-                target2 = RandIntn(Notches);
-                target3 = RandIntn(Notches);
-
-                SetMeshColor(trans, "Bg Top", Colors.CellColor(target1, Notches, colorSets[colorSet].colors));
-                SetMeshColor(trans, "Bg 01", Colors.CellColor(target1, Notches, colorSets[colorSet].colors));
-                SetMeshColor(trans, "Bg 02", Colors.CellColor(target2, Notches, colorSets[colorSet].colors));
-                SetMeshColor(trans, "Bg 03", Colors.CellColor(target3, Notches, colorSets[colorSet].colors));
-                SetMeshColor(trans, "Bg Bottom", Colors.CellColor(target3, Notches, colorSets[colorSet].colors));
-
-                chosenInput1 = RandIntn(InputTypes);
-                chosenInput2 = RandIntn(InputTypes);
-                chosenInput3 = RandIntn(InputTypes);
-
-                chosenInput1 = 0;
-                chosenInput2 = 1;
-                chosenInput3 = 2;
+                chosenInputs[i] = RandIntn(InputTypes);
+                chosenInputs[i] = i; // TODO: remove
             }
 
-            SetMeshColor(trans, "Fg 01", Colors.CellColor(val1, Notches, colorSets[colorSet].colors));
-            SetMeshColor(trans, "Fg 02", Colors.CellColor(val2, Notches, colorSets[colorSet].colors));
-            SetMeshColor(trans, "Fg 03", Colors.CellColor(val3, Notches, colorSets[colorSet].colors));
+            for (var i = 0; i < cells; i++)
+            {
+                if (i == 0)
+                {
+                    SetMeshColor(pgRefs.BgTop, Colors.CellColor(targets[i], Notches, colorSets[colorSet].colors));
+                }
 
-            SetMeshColor(trans, "Score", colorSets[colorSet].colors[1]);
+                SetMeshColor(pgRefs.Bg[i], Colors.CellColor(targets[i], Notches, colorSets[colorSet].colors));
+                if (i + 1 == cells)
+                {
+                    SetMeshColor(pgRefs.BgBottom, Colors.CellColor(targets[i], Notches, colorSets[colorSet].colors));
+                }
+            }
+        }
 
-            SetMeshColor(trans, "Z", Color.yellow);
+        rawInputs = RawInputs.Get(rawInputs, mockGyroscope);
+        var values = new float[cells];
+        for (var i = 0; i < chosenInputs.Length; i++)
+        {
+            var tmpRr = (chosenInputs[i] % 3) switch
+            {
+                0 => RainbowRepeatsPitch,
+                1 => RainbowRepeatsRoll,
+                _ => RainbowRepeatsYaw
+            };
+
+            values[i] = GetVal(rawInputs, chosenInputs[i], tmpRr, Notches);
+        }
+
+        // var childTrans = trans.Find("Text 01");
+        // var tmp = childTrans.GetComponent<TextMeshPro>();
+        // tmp.color = colorSets[colorSet].colors[0];
+        //
+        // childTrans = trans.Find("Text 02");
+        // tmp = childTrans.GetComponent<TextMeshPro>();
+        // tmp.color = colorSets[colorSet].colors[0];
+
+        for (var i = 0; i < cells; i++)
+        {
+            SetMeshColor(pgRefs.Fg[i], Colors.CellColor(values[i], Notches, colorSets[colorSet].colors));
+        }
+
+        // SetMeshColor(pr.Score, colorSets[colorSet].colors[1]);
+
+        SetMeshColor(pgRefs.Z, Color.black);
+
+        var scoring = true;
+        for (var i = 0; i < chosenInputs.Length; i++)
+        {
+            if (Mathf.Abs(values[i] - targets[i]) > CloseEnough &&
+                (targets[i] != 0 || Mathf.Abs(values[i] - Notches) > CloseEnough))
+            {
+                scoring = false;
+            }
+        }
+
+        if (scoring)
+        {
+            heldFor++;
+        }
+        else
+        {
+            heldFor = 0;
         }
     }
 
-    private int RandIntn(int n)
+    private void DeleteRenderers()
+    {
+        var i = 0;
+        var children = new GameObject[playground.transform.childCount];
+
+        foreach (Transform child in playground.transform)
+        {
+            if (!child.name.StartsWith("Fg") && !child.name.StartsWith("Bg") &&
+                child.name is not ("Score" or "Z")) continue;
+            children[i] = child.gameObject;
+            i += 1;
+        }
+
+        foreach (var child in children)
+        {
+            if (child != null)
+            {
+                DestroyImmediate(child.gameObject);
+            }
+        }
+    }
+
+    private void BuildMeshes()
+    {
+        const float goldenRatio = 1.618f;
+        const float overlap = 0.01f;
+        const float foregroundWidth = 3.0f / 4;
+        const float foregroundHeight = foregroundWidth * goldenRatio;
+
+        var displayWidth = Screen.width;
+        var displayHeight = Screen.height;
+        var backgroundHeight = 1.0f / displayWidth * displayHeight;
+        var topHeight = (backgroundHeight - foregroundHeight) / 2;
+        var scoreHeight = topHeight / 5;
+        var trans = playground.transform;
+
+        //     new Vector3(7.0f / 8, scoreHeight, 1));
+        //     new Vector3(0, backgroundHeight / 2 - scoreHeight / 2 - 1.0f / 5, 0.001f),
+        // pr.Score = BuildMesh(trans, "Score", PrimitiveType.Quad,
+        pgRefs.BgTop = BuildMesh(trans, "Bg Top", PrimitiveType.Quad,
+            new Vector3(0, foregroundHeight / 2 + topHeight / 2 - overlap / 2, 0.003f),
+            new Vector3(1, topHeight + overlap, 1));
+        pgRefs.Fg = new Renderer[cells];
+        pgRefs.Bg = new Renderer[cells];
+
+        switch (cells)
+        {
+            // if (cells == 1)
+            // {
+            //     BuildMesh(trans, "Fg 01", PrimitiveType.Quad, new Vector3(0, 0, 0.001f),
+            //         new Vector3(foregroundWidth, foregroundHeight, 1));
+            //     BuildMesh(trans, "Bg 01", PrimitiveType.Quad, new Vector3(0, 0, 0.002f),
+            //         new Vector3(1, foregroundHeight, 1));
+            // } else 
+            case 2:
+            {
+                var restHeight = 2.0f * backgroundHeight / 5 - topHeight;
+                var oneHeight = foregroundHeight - restHeight;
+                pgRefs.Fg[0] = BuildMesh(trans, "Fg 01", PrimitiveType.Quad,
+                    new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.001f),
+                    new Vector3(foregroundWidth, oneHeight, 1));
+                pgRefs.Bg[0] = BuildMesh(trans, "Bg 01", PrimitiveType.Quad,
+                    new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.002f),
+                    new Vector3(1, oneHeight, 1));
+                pgRefs.Fg[1] = BuildMesh(trans, "Fg 02", PrimitiveType.Quad,
+                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.001f),
+                    new Vector3(foregroundWidth, restHeight, 1));
+                pgRefs.Bg[1] = BuildMesh(trans, "Bg 02", PrimitiveType.Quad,
+                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
+                    new Vector3(1, restHeight, 1));
+                break;
+            }
+            case 3:
+            {
+                var oneHeight = backgroundHeight / 3 - topHeight;
+                var restHeight = (foregroundHeight - oneHeight) / 2;
+                pgRefs.Fg[0] = BuildMesh(trans, "Fg 01", PrimitiveType.Quad,
+                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.001f),
+                    new Vector3(foregroundWidth, oneHeight, 1));
+                pgRefs.Bg[0] = BuildMesh(trans, "Bg 01", PrimitiveType.Quad,
+                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.002f),
+                    new Vector3(1, oneHeight, 1));
+                pgRefs.Fg[1] = BuildMesh(trans, "Fg 02", PrimitiveType.Quad,
+                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.001f),
+                    new Vector3(foregroundWidth, restHeight, 1));
+                pgRefs.Bg[1] = BuildMesh(trans, "Bg 02", PrimitiveType.Quad,
+                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.002f),
+                    new Vector3(1, restHeight, 1));
+                pgRefs.Fg[2] = BuildMesh(trans, "Fg 03", PrimitiveType.Quad,
+                    new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0.001f),
+                    new Vector3(foregroundWidth, restHeight, 1));
+                pgRefs.Bg[2] = BuildMesh(trans, "Bg 03", PrimitiveType.Quad,
+                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
+                    new Vector3(1, restHeight, 1));
+                break;
+            }
+        }
+        // else if (cells == 4)
+        // {
+        //     float oneHeight = backgroundHeight / 3 - topHeight;
+        //     float restHeight = (foregroundHeight - oneHeight) / 4;
+        //     BuildMesh(trans, "Fg 01", PrimitiveType.Quad,
+        //         new Vector3(0, oneHeight / 2 + restHeight * 4 - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, oneHeight, 1));
+        //     BuildMesh(trans, "Fg 02", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 3.5f - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight, 1));
+        //     BuildMesh(trans, "Fg 03", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 2.5f - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight, 1));
+        //     BuildMesh(trans, "Fg 04", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight * 2.0f, 1));
+        //     BuildMesh(trans, "Bg 01", PrimitiveType.Quad,
+        //         new Vector3(0, oneHeight / 2 + restHeight * 4 - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, oneHeight, 1));
+        //     BuildMesh(trans, "Bg 02", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 3.5f - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight, 1));
+        //     BuildMesh(trans, "Bg 03", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 2.5f - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight, 1));
+        //     BuildMesh(trans, "Bg 04", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight * 2.0f, 1));
+        // }
+        // else if (cells == 5)
+        // {
+        //     float oneHeight = backgroundHeight / 3 - topHeight;
+        //     float restHeight = (foregroundHeight - oneHeight) / 5;
+        //     BuildMesh(trans, "Fg 01", PrimitiveType.Quad,
+        //         new Vector3(0, oneHeight / 2 + restHeight * 5 - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, oneHeight, 1));
+        //     BuildMesh(trans, "Fg 02", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 4.5f - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight, 1));
+        //     BuildMesh(trans, "Fg 03", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 3.5f - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight, 1));
+        //     BuildMesh(trans, "Fg 04", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 2.5f - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight, 1));
+        //     BuildMesh(trans, "Fg 05", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.001f),
+        //         new Vector3(foregroundWidth, restHeight * 2, 1));
+        //     BuildMesh(trans, "Bg 01", PrimitiveType.Quad,
+        //         new Vector3(0, oneHeight / 2 + restHeight * 5 - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, oneHeight, 1));
+        //     BuildMesh(trans, "Bg 02", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 4.5f - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight, 1));
+        //     BuildMesh(trans, "Bg 03", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 3.5f - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight, 1));
+        //     BuildMesh(trans, "Bg 04", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight * 2.5f - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight, 1));
+        //     BuildMesh(trans, "Bg 05", PrimitiveType.Quad,
+        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.002f),
+        //         new Vector3(1, restHeight * 2, 1));
+        // }
+
+        pgRefs.BgBottom = BuildMesh(trans, "Bg Bottom", PrimitiveType.Quad,
+            new Vector3(0, -foregroundHeight / 2 - topHeight / 2 + overlap / 2, 0.003f),
+            new Vector3(1, topHeight + overlap, 1));
+
+        pgRefs.Z = BuildMesh(trans, "Z", PrimitiveType.Cube, new Vector3(0, 0, 0.06f),
+            new Vector3(1.15f, backgroundHeight + 0.15f, 0.1f));
+    }
+
+    private static int RandIntn(int n)
     {
         var x = Mathf.FloorToInt(Random.Range(0, n));
         if (Mathf.Approximately(x, n))
@@ -162,178 +345,44 @@ public class GameController : MonoBehaviour
         return x;
     }
 
-    private void BuildMeshes(Transform trans)
-    {
-        float displayWidth = Screen.width;
-        float displayHeight = Screen.height;
-        const float goldenRatio = 1.618F;
-
-        const float overlap = 0.01F;
-
-        const float foregroundWidth = 3.0F / 4;
-        const float foregroundHeight = foregroundWidth * goldenRatio;
-
-        var backgroundHeight = 1.0F / displayWidth * displayHeight;
-
-        var topHeight = (backgroundHeight - foregroundHeight) / 2;
-
-        var scoreHeight = topHeight / 5;
-
-        BuildMesh(trans, "Score", PrimitiveType.Quad,
-            new Vector3(0, backgroundHeight / 2 - scoreHeight / 2 - 1.0F / 5, 0.001F),
-            new Vector3(7.0F / 8, scoreHeight, 1));
-        BuildMesh(trans, "Bg Top", PrimitiveType.Quad,
-            new Vector3(0, foregroundHeight / 2 + topHeight / 2 - overlap / 2, 0.003F),
-            new Vector3(1, topHeight + overlap, 1));
-
-        // if (stripes == 1)
-        // {
-        //     buildMesh(trans, "Fg 01", PrimitiveType.Quad, new Vector3(0, 0, 0.001F),
-        //         new Vector3(foregroundWidth, foregroundHeight, 1));
-        //     buildMesh(trans, "Bg 01", PrimitiveType.Quad, new Vector3(0, 0, 0.002F),
-        //         new Vector3(1, foregroundHeight, 1));
-        // }
-        // else if (stripes == 2)
-        // {
-        //     float restHeight = 2.0F * backgroundHeight / 5 - topHeight;
-        //     float oneHeight = foregroundHeight - restHeight;
-        //     buildMesh(trans, "Fg 01", PrimitiveType.Quad,
-        //         new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, oneHeight, 1));
-        //     buildMesh(trans, "Fg 02", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight, 1));
-        //     buildMesh(trans, "Bg 01", PrimitiveType.Quad,
-        //         new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, oneHeight, 1));
-        //     buildMesh(trans, "Bg 02", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight, 1));
-        // }
-        // else
-        if (stripes == 3)
-        {
-            float oneHeight = backgroundHeight / 3 - topHeight;
-            float restHeight = (foregroundHeight - oneHeight) / 2;
-            BuildMesh(trans, "Fg 01", PrimitiveType.Quad,
-                new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.001F),
-                new Vector3(foregroundWidth, oneHeight, 1));
-            BuildMesh(trans, "Fg 02", PrimitiveType.Quad,
-                new Vector3(0, restHeight * 1.5F - foregroundHeight / 2, 0.001F),
-                new Vector3(foregroundWidth, restHeight, 1));
-            BuildMesh(trans, "Fg 03", PrimitiveType.Quad,
-                new Vector3(0, restHeight * 0.5F - foregroundHeight / 2, 0.001F),
-                new Vector3(foregroundWidth, restHeight, 1));
-            BuildMesh(trans, "Bg 01", PrimitiveType.Quad,
-                new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.002F),
-                new Vector3(1, oneHeight, 1));
-            BuildMesh(trans, "Bg 02", PrimitiveType.Quad,
-                new Vector3(0, restHeight * 1.5F - foregroundHeight / 2, 0.002F),
-                new Vector3(1, restHeight, 1));
-            BuildMesh(trans, "Bg 03", PrimitiveType.Quad,
-                new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002F),
-                new Vector3(1, restHeight, 1));
-        }
-        // else if (stripes == 4)
-        // {
-        //     float oneHeight = backgroundHeight / 3 - topHeight;
-        //     float restHeight = (foregroundHeight - oneHeight) / 4;
-        //     buildMesh(trans, "Fg 01", PrimitiveType.Quad,
-        //         new Vector3(0, oneHeight / 2 + restHeight * 4 - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, oneHeight, 1));
-        //     buildMesh(trans, "Fg 02", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 3.5F - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight, 1));
-        //     buildMesh(trans, "Fg 03", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 2.5F - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight, 1));
-        //     buildMesh(trans, "Fg 04", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight * 2.0F, 1));
-        //     buildMesh(trans, "Bg 01", PrimitiveType.Quad,
-        //         new Vector3(0, oneHeight / 2 + restHeight * 4 - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, oneHeight, 1));
-        //     buildMesh(trans, "Bg 02", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 3.5F - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight, 1));
-        //     buildMesh(trans, "Bg 03", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 2.5F - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight, 1));
-        //     buildMesh(trans, "Bg 04", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight * 2.0F, 1));
-        // }
-        // else if (stripes == 5)
-        // {
-        //     float oneHeight = backgroundHeight / 3 - topHeight;
-        //     float restHeight = (foregroundHeight - oneHeight) / 5;
-        //     buildMesh(trans, "Fg 01", PrimitiveType.Quad,
-        //         new Vector3(0, oneHeight / 2 + restHeight * 5 - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, oneHeight, 1));
-        //     buildMesh(trans, "Fg 02", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 4.5F - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight, 1));
-        //     buildMesh(trans, "Fg 03", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 3.5F - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight, 1));
-        //     buildMesh(trans, "Fg 04", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 2.5F - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight, 1));
-        //     buildMesh(trans, "Fg 05", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.001F),
-        //         new Vector3(foregroundWidth, restHeight * 2, 1));
-        //     buildMesh(trans, "Bg 01", PrimitiveType.Quad,
-        //         new Vector3(0, oneHeight / 2 + restHeight * 5 - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, oneHeight, 1));
-        //     buildMesh(trans, "Bg 02", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 4.5F - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight, 1));
-        //     buildMesh(trans, "Bg 03", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 3.5F - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight, 1));
-        //     buildMesh(trans, "Bg 04", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight * 2.5F - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight, 1));
-        //     buildMesh(trans, "Bg 05", PrimitiveType.Quad,
-        //         new Vector3(0, restHeight - foregroundHeight / 2, 0.002F),
-        //         new Vector3(1, restHeight * 2, 1));
-        // }
-
-        BuildMesh(trans, "Bg Bottom", PrimitiveType.Quad,
-            new Vector3(0, -foregroundHeight / 2 - topHeight / 2 + overlap / 2, 0.003F),
-            new Vector3(1, topHeight + overlap, 1));
-
-        BuildMesh(trans, "Z", PrimitiveType.Cube, new Vector3(0, 0, 0.06F),
-            new Vector3(1.15F, backgroundHeight + 0.15F, 0.1F));
-    }
-
-    private static void BuildMesh(Transform trans, string name, PrimitiveType pt, Vector3 localPosition,
+    private static Renderer BuildMesh(Transform trans, string name, PrimitiveType pt,
+        Vector3 localPosition,
         Vector3 localScale)
     {
-        GameObject go = GameObject.CreatePrimitive(pt);
+        var go = GameObject.CreatePrimitive(pt);
         go.name = name;
-        Renderer rend = go.GetComponent<Renderer>();
-        Collider collider = go.GetComponent<Collider>();
-        DestroyImmediate(collider);
-        rend.sharedMaterial = Resources.Load("Materials/ThomasMountain") as Material;
         go.transform.parent = trans;
         go.transform.localPosition = localPosition;
         go.transform.localScale = localScale;
+
+        var collider = go.GetComponent<Collider>();
+        DestroyImmediate(collider);
+
+        var rend = go.GetComponent<Renderer>();
+        rend.sharedMaterial = Resources.Load("Materials/ThomasMountain") as Material;
+        return rend;
     }
 
-    private void SetMeshColor(Transform trans, string childName, Color color)
+    private static void SetMeshColor(Renderer r, Color color)
     {
-        Transform childTrans = trans.Find(childName);
-        propBlock = new MaterialPropertyBlock();
-        _renderer = childTrans.GetComponent<Renderer>();
-        _renderer.GetPropertyBlock(propBlock);
+        var propBlock = new MaterialPropertyBlock();
         propBlock.SetColor(Color1, color);
-        _renderer.SetPropertyBlock(propBlock);
+        r.SetPropertyBlock(propBlock);
     }
 
     private static float GetVal(IReadOnlyList<float> inputs, int chosenInput, float rainbowRepeats, int notches)
     {
         if (chosenInput == -1) return -1;
-        return (inputs[chosenInput] * rainbowRepeats) % 1.0F * notches;
+        return inputs[chosenInput] * rainbowRepeats % 1.0f * notches;
+    }
+
+    public void OnScoreButtonPress()
+    {
+        scorePushed = true;
+    }
+
+    public void OnLayoutButtonPress()
+    {
+        cells = cells == 3 ? 2 : 3;
     }
 }

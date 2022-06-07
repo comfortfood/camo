@@ -16,13 +16,13 @@ public static class RawInputs
             t.localRotation = new Quaternion(q1[2], q1[0], q1[3], q1[1]);
 
             yaw = t.localEulerAngles[1];
-            t.Rotate(0f, yaw, 0f);
+            t.Rotate(0, yaw, 0);
 
             pitch = t.localEulerAngles[0];
-            t.Rotate(pitch, 0f, 0f);
+            t.Rotate(pitch, 0, 0);
 
             roll = t.localEulerAngles[2];
-            t.Rotate(0f, 0f, roll * -1);
+            t.Rotate(0, 0, roll * -1);
 
             Object.DestroyImmediate(g);
         }
@@ -39,127 +39,79 @@ public static class RawInputs
             pitch -= 360;
         }
 
-        yaw /= 57.2958F * Mathf.PI * 2;
-        pitch = (pitch / -57.2958F + Mathf.PI / 2) / Mathf.PI;
-        roll /= 57.2958F * Mathf.PI * 2;
+        yaw /= 57.2958f * Mathf.PI * 2;
+        pitch = (pitch / -57.2958f + Mathf.PI / 2) / Mathf.PI;
+        roll /= 57.2958f * Mathf.PI * 2;
 
-        float pitchSmooth;
-        float pitchPlus;
-        float pitchMinus;
-        float rollSmooth;
-        float rollPlus;
-        float rollMinus;
-        float yawSmooth;
-        float yawPlus;
-        float yawMinus;
+        var arr = new float[21];
 
         if (rawInputs == null)
         {
-            pitchSmooth = pitch;
-            pitchPlus = pitch;
-            pitchMinus = pitch;
-            rollSmooth = roll;
-            rollPlus = roll;
-            rollMinus = roll;
-            yawSmooth = yaw;
-            yawPlus = yaw;
-            yawMinus = yaw;
+            arr = new[]
+            {
+                pitch,
+                roll,
+                yaw,
+                pitch,
+                roll,
+                yaw,
+                pitch,
+                roll,
+                yaw,
+                pitch,
+                roll,
+                yaw,
+                pitch,
+                roll,
+                yaw,
+                pitch,
+                roll,
+                yaw,
+                pitch,
+                roll,
+                yaw
+            };
         }
         else
         {
-            // pitch change
-            var pc = Mathf.Abs(pitch - rawInputs[9]);
-
-            if (pc > 0.003 && pc < 0.997)
+            for (var i = 0; i < 18; i++)
             {
-                if ((pc < 0.5 && pitch > rawInputs[9]) ||
-                    (pc >= 0.5 && pitch <= rawInputs[9]))
+                arr[i] = rawInputs[i];
+            }
+
+            arr[18] = pitch;
+            arr[19] = roll;
+            arr[20] = yaw;
+
+            for (var i = 0; i < 3; i++)
+            {
+                var c = Mathf.Abs(arr[18 + i] - rawInputs[18 + i]);
+
+                if (!(c > 0.002) || !(c < 0.998)) continue;
+
+                if ((c < 0.5 && arr[18 + i] > rawInputs[18 + i]) ||
+                    (c >= 0.5 && arr[18 + i] <= rawInputs[18 + i]))
                 {
-                    pitchSmooth = (rawInputs[0] + pc) % 1.0F;
-                    pitchPlus = (rawInputs[3] + pc) % 1.0F;
-                    pitchMinus = rawInputs[4];
+                    arr[0 + i] += c;
+                    arr[3 + i] += c;
+                    arr[9 + i] += c / 2;
+                    arr[12 + i] += c / 2;
                 }
                 else
                 {
-                    pitchSmooth = (rawInputs[0] + 1 - pc) % 1.0F;
-                    pitchPlus = rawInputs[3];
-                    pitchMinus = (rawInputs[4] + 1 - pc) % 1.0F;
+                    arr[0 + i] += 1 - c;
+                    arr[6 + i] += 1 - c;
+                    arr[9 + i] += 1 - c / 2;
+                    arr[15 + i] += 1 - c / 2;
                 }
-            }
-            else
-            {
-                pitchSmooth = rawInputs[0];
-                pitchPlus = rawInputs[3];
-                pitchMinus = rawInputs[4];
             }
 
-            // roll change
-            var rc = Mathf.Abs(roll - rawInputs[10]);
-
-            if (rc > 0.003 && rc < 0.997)
+            for (var i = 0; i < 18; i++)
             {
-                if ((rc < 0.5 && roll > rawInputs[10]) ||
-                    (rc >= 0.5 && roll <= rawInputs[10]))
-                {
-                    rollSmooth = (rawInputs[1] + rc) % 1.0F;
-                    rollPlus = (rawInputs[5] + rc) % 1.0F;
-                    rollMinus = rawInputs[6];
-                }
-                else
-                {
-                    rollSmooth = (rawInputs[1] + 1 - rc) % 1.0F;
-                    rollPlus = rawInputs[5];
-                    rollMinus = (rawInputs[6] + 1 - rc) % 1.0F;
-                }
-            }
-            else
-            {
-                rollSmooth = rawInputs[1];
-                rollPlus = rawInputs[5];
-                rollMinus = rawInputs[6];
-            }
-
-            // yaw change
-            var yc = Mathf.Abs(yaw - rawInputs[11]);
-
-            if (yc > 0.003 && yc < 0.997)
-            {
-                if ((yc < 0.5 && yaw > rawInputs[11]) ||
-                    (yc >= 0.5 && yaw <= rawInputs[11]))
-                {
-                    yawSmooth = (rawInputs[2] + yc) % 1.0F;
-                    yawPlus = (rawInputs[7] + yc) % 1.0F;
-                    yawMinus = rawInputs[8];
-                }
-                else
-                {
-                    yawSmooth = (rawInputs[2] + 1 - yc) % 1.0F;
-                    yawPlus = rawInputs[7];
-                    yawMinus = (rawInputs[8] + 1 - yc) % 1.0F;
-                }
-            }
-            else
-            {
-                yawSmooth = rawInputs[2];
-                yawPlus = rawInputs[7];
-                yawMinus = rawInputs[8];
+                arr[i] %= 1.0f;
             }
         }
 
-        return new[]
-        {
-            pitchSmooth,
-            rollSmooth,
-            yawSmooth,
-            pitchPlus,
-            pitchMinus,
-            rollPlus,
-            rollMinus,
-            yawPlus,
-            yawMinus,
-            pitch,
-            roll,
-            yaw,
-        };
+        return arr;
     }
 }
