@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using Random = UnityEngine.Random;
 
 [ExecuteInEditMode]
 public class GameController : MonoBehaviour
@@ -41,7 +40,7 @@ public class GameController : MonoBehaviour
 
     // config
     private int colorSet;
-    private int cells = 3;
+    private int cellCount = ShreddedCells;
     private const int Notches = 5;
     private const int InputTypes = 3;
     private const int HoldForToScore = 30;
@@ -50,12 +49,12 @@ public class GameController : MonoBehaviour
     private const int RainbowRepeatsRoll = 4;
     private const int RainbowRepeatsYaw = 5;
     private int score;
-    private int[] targets = { };
-    private int[] chosenInputs = { };
     private int heldFor;
     private float[] rawInputs;
     private static readonly int Color1 = Shader.PropertyToID("_Color");
     private bool scorePushed;
+    private Challenger.Cell[] cells;
+    private const int ShreddedCells = 60;
 
     public void Start()
     {
@@ -66,15 +65,7 @@ public class GameController : MonoBehaviour
 
     public void Update()
     {
-        var isChangeLayout = false;
-        if (pgRefs.BgTop == null || pgRefs.Bg.Length != cells)
-        {
-            isChangeLayout = true;
-            DeleteRenderers();
-            BuildMeshes();
-        }
-
-        if (chosenInputs.Length == 0 || heldFor >= HoldForToScore || scorePushed || isChangeLayout)
+        if (pgRefs.BgTop == null || pgRefs.Bg.Length != cellCount || heldFor >= HoldForToScore || scorePushed)
         {
             if (heldFor >= HoldForToScore || scorePushed)
             {
@@ -82,49 +73,45 @@ public class GameController : MonoBehaviour
                 Handheld.Vibrate();
             }
 
+            if (pgRefs.BgTop == null || pgRefs.Bg.Length != cellCount)
+            {
+                DeleteRenderers();
+                BuildMeshes();
+            }
+
             heldFor = 0;
             scorePushed = false;
 
-            targets = new int[cells];
-            for (var i = 0; i < cells; i++)
+            if (cellCount == ShreddedCells)
             {
-                targets[i] = RandIntn(Notches);
+                cells = Challenger.GetRepeatedChallenge(cellCount, Notches);
+            }
+            else
+            {
+                cells = Challenger.GetChallenge(cellCount, Notches, new List<int> { 0, 1, 2 });
             }
 
-            chosenInputs = new int[cells];
-            for (var i = 0; i < cells; i++)
-            {
-                chosenInputs[i] = RandIntn(InputTypes);
-                chosenInputs[i] = i; // TODO: remove
-            }
-
-            for (var i = 0; i < cells; i++)
+            for (var i = 0; i < cellCount; i++)
             {
                 if (i == 0)
                 {
-                    SetMeshColor(pgRefs.BgTop, Colors.CellColor(targets[i], Notches, colorSets[colorSet].colors));
+                    SetMeshColor(pgRefs.BgTop, Colors.CellColor(cells[i].Target, Notches, colorSets[colorSet].colors));
                 }
 
-                SetMeshColor(pgRefs.Bg[i], Colors.CellColor(targets[i], Notches, colorSets[colorSet].colors));
-                if (i + 1 == cells)
+                SetMeshColor(pgRefs.Bg[i], Colors.CellColor(cells[i].Target, Notches, colorSets[colorSet].colors));
+                if (i + 1 == cellCount)
                 {
-                    SetMeshColor(pgRefs.BgBottom, Colors.CellColor(targets[i], Notches, colorSets[colorSet].colors));
+                    SetMeshColor(pgRefs.BgBottom,
+                        Colors.CellColor(cells[i].Target, Notches, colorSets[colorSet].colors));
                 }
             }
         }
 
         rawInputs = RawInputs.Get(rawInputs, mockGyroscope);
-        var values = new float[cells];
-        for (var i = 0; i < chosenInputs.Length; i++)
+        var values = new float[cellCount];
+        for (var i = 0; i < cellCount; i++)
         {
-            var tmpRr = (chosenInputs[i] % 3) switch
-            {
-                0 => RainbowRepeatsPitch,
-                1 => RainbowRepeatsRoll,
-                _ => RainbowRepeatsYaw
-            };
-
-            values[i] = GetVal(rawInputs, chosenInputs[i], tmpRr, Notches);
+            values[i] = GetVal(rawInputs, cells[i], Notches);
         }
 
         // var childTrans = trans.Find("Text 01");
@@ -135,7 +122,7 @@ public class GameController : MonoBehaviour
         // tmp = childTrans.GetComponent<TextMeshPro>();
         // tmp.color = colorSets[colorSet].colors[0];
 
-        for (var i = 0; i < cells; i++)
+        for (var i = 0; i < cellCount; i++)
         {
             SetMeshColor(pgRefs.Fg[i], Colors.CellColor(values[i], Notches, colorSets[colorSet].colors));
         }
@@ -145,10 +132,10 @@ public class GameController : MonoBehaviour
         SetMeshColor(pgRefs.Z, Color.black);
 
         var scoring = true;
-        for (var i = 0; i < chosenInputs.Length; i++)
+        for (var i = 0; i < cellCount; i++)
         {
-            if (Mathf.Abs(values[i] - targets[i]) > CloseEnough &&
-                (targets[i] != 0 || Mathf.Abs(values[i] - Notches) > CloseEnough))
+            if (Mathf.Abs(values[i] - cells[i].Target) > CloseEnough &&
+                (cells[i].Target != 0 || Mathf.Abs(values[i] - Notches) > CloseEnough))
             {
                 scoring = false;
             }
@@ -190,26 +177,26 @@ public class GameController : MonoBehaviour
     {
         const float goldenRatio = 1.618f;
         const float overlap = 0.01f;
-        const float foregroundWidth = 3.0f / 4;
+        const float foregroundWidth = 3f / 4;
         const float foregroundHeight = foregroundWidth * goldenRatio;
 
         var displayWidth = Screen.width;
         var displayHeight = Screen.height;
-        var backgroundHeight = 1.0f / displayWidth * displayHeight;
+        var backgroundHeight = 1f / displayWidth * displayHeight;
         var topHeight = (backgroundHeight - foregroundHeight) / 2;
         var scoreHeight = topHeight / 5;
         var trans = playground.transform;
 
-        //     new Vector3(7.0f / 8, scoreHeight, 1));
-        //     new Vector3(0, backgroundHeight / 2 - scoreHeight / 2 - 1.0f / 5, 0.001f),
+        //     new Vector3(7f / 8, scoreHeight, 1));
+        //     new Vector3(0, backgroundHeight / 2 - scoreHeight / 2 - 1f / 5, 0.001f),
         // pr.Score = BuildMesh(trans, "Score", PrimitiveType.Quad,
         pgRefs.BgTop = BuildMesh(trans, "Bg Top", PrimitiveType.Quad,
             new Vector3(0, foregroundHeight / 2 + topHeight / 2 - overlap / 2, 0.003f),
             new Vector3(1, topHeight + overlap, 1));
-        pgRefs.Fg = new Renderer[cells];
-        pgRefs.Bg = new Renderer[cells];
+        pgRefs.Fg = new Renderer[cellCount];
+        pgRefs.Bg = new Renderer[cellCount];
 
-        switch (cells)
+        switch (cellCount)
         {
             // if (cells == 1)
             // {
@@ -220,7 +207,7 @@ public class GameController : MonoBehaviour
             // } else 
             case 2:
             {
-                var restHeight = 2.0f * backgroundHeight / 5 - topHeight;
+                var restHeight = 2f * backgroundHeight / 5 - topHeight;
                 var oneHeight = foregroundHeight - restHeight;
                 pgRefs.Fg[0] = BuildMesh(trans, "Fg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.001f),
@@ -260,6 +247,22 @@ public class GameController : MonoBehaviour
                     new Vector3(1, restHeight, 1));
                 break;
             }
+            case ShreddedCells:
+            {
+                for (var i = 0; i < ShreddedCells; i++)
+                {
+                    pgRefs.Fg[i] = BuildMesh(trans, "Fg " + (i + 1).ToString("D2"), PrimitiveType.Quad,
+                        new Vector3(0, foregroundHeight / 2 - (1 + 2 * i) * foregroundHeight / (2 * ShreddedCells),
+                            0.001f),
+                        new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
+                    pgRefs.Bg[i] = BuildMesh(trans, "Bg " + (i + 1).ToString("D2"), PrimitiveType.Quad,
+                        new Vector3(0, foregroundHeight / 2 - (1 + 2 * i) * foregroundHeight / (2 * ShreddedCells),
+                            0.002f),
+                        new Vector3(1, foregroundHeight / ShreddedCells, 1));
+                }
+
+                break;
+            }
         }
         // else if (cells == 4)
         // {
@@ -276,7 +279,7 @@ public class GameController : MonoBehaviour
         //         new Vector3(foregroundWidth, restHeight, 1));
         //     BuildMesh(trans, "Fg 04", PrimitiveType.Quad,
         //         new Vector3(0, restHeight - foregroundHeight / 2, 0.001f),
-        //         new Vector3(foregroundWidth, restHeight * 2.0f, 1));
+        //         new Vector3(foregroundWidth, restHeight * 2f, 1));
         //     BuildMesh(trans, "Bg 01", PrimitiveType.Quad,
         //         new Vector3(0, oneHeight / 2 + restHeight * 4 - foregroundHeight / 2, 0.002f),
         //         new Vector3(1, oneHeight, 1));
@@ -288,7 +291,7 @@ public class GameController : MonoBehaviour
         //         new Vector3(1, restHeight, 1));
         //     BuildMesh(trans, "Bg 04", PrimitiveType.Quad,
         //         new Vector3(0, restHeight - foregroundHeight / 2, 0.002f),
-        //         new Vector3(1, restHeight * 2.0f, 1));
+        //         new Vector3(1, restHeight * 2f, 1));
         // }
         // else if (cells == 5)
         // {
@@ -334,17 +337,6 @@ public class GameController : MonoBehaviour
             new Vector3(1.15f, backgroundHeight + 0.15f, 0.1f));
     }
 
-    private static int RandIntn(int n)
-    {
-        var x = Mathf.FloorToInt(Random.Range(0, n));
-        if (Mathf.Approximately(x, n))
-        {
-            x = 0;
-        }
-
-        return x;
-    }
-
     private static Renderer BuildMesh(Transform trans, string name, PrimitiveType pt,
         Vector3 localPosition,
         Vector3 localScale)
@@ -370,10 +362,15 @@ public class GameController : MonoBehaviour
         r.SetPropertyBlock(propBlock);
     }
 
-    private static float GetVal(IReadOnlyList<float> inputs, int chosenInput, float rainbowRepeats, int notches)
+    private static float GetVal(IReadOnlyList<float> inputs, Challenger.Cell cell, int notches)
     {
-        if (chosenInput == -1) return -1;
-        return inputs[chosenInput] * rainbowRepeats % 1.0f * notches;
+        var rainbowRepeats = (cell.Input % 3) switch
+        {
+            0 => RainbowRepeatsPitch,
+            1 => RainbowRepeatsRoll,
+            _ => RainbowRepeatsYaw
+        };
+        return (inputs[cell.Input] * rainbowRepeats % 1f * notches + cell.Start) % notches;
     }
 
     public void OnScoreButtonPress()
@@ -383,6 +380,11 @@ public class GameController : MonoBehaviour
 
     public void OnLayoutButtonPress()
     {
-        cells = cells == 3 ? 2 : 3;
+        cellCount = cellCount switch
+        {
+            2 => 3,
+            3 => ShreddedCells,
+            _ => 2
+        };
     }
 }
