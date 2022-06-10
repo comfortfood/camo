@@ -45,7 +45,7 @@ public static class RawInputs
 
         var arr = new float[21];
 
-        if (rawInputs == null)
+        if (rawInputs is not { Length: 21 })
         {
             arr = new[]
             {

@@ -55,7 +55,7 @@ public class Challenger
         Shuffle(inputTypes);
 
         var inputs = new List<int>();
-        for (var i = 0; i < 6; i++)
+        for (var i = 0; i < 3; i++)
         {
             inputs.Add(inputTypes[i % 2]);
         }
@@ -72,7 +72,7 @@ public class Challenger
         //     };
         // }
 
-        var randCells = GetChallenge(6, notches, inputs);
+        var randCells = GetChallenge(3, notches, inputs);
         for (var r = 0; r < randCells.Length; r++)
         {
             cells[r] = randCells[r];
@@ -120,7 +120,7 @@ public class Challenger
                 start += notches;
             }
 
-            start /= 2;
+            start *= .5f;
         }
 
         return ((int)(start + target) % notches, lowOffset);
