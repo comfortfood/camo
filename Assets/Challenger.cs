@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Challenger
+public static class Challenger
 {
     public struct Cell
     {
@@ -129,7 +129,7 @@ public class Challenger
     private static int RandIntn(int n)
     {
         var x = Mathf.FloorToInt(Random.Range(0, n));
-        if (Mathf.Approximately(x, n))
+        if (x >= n)
         {
             x = 0;
         }
