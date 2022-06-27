@@ -22,4 +22,9 @@ public static class Colors
             g = fColor.g * f + cColor.g * c,
         };
     }
+
+    public static Texture2D CellTexture(float val, int notches, Texture2D[] textures)
+    {
+        return textures[(int)Mathf.Floor(val + .5f) % notches];
+    }
 }

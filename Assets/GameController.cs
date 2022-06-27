@@ -8,13 +8,19 @@ public class GameController : MonoBehaviour
 {
     private struct PlaygroundRefs
     {
-        public Renderer Score;
-        public Renderer BgTop;
-        public Renderer[] Fg;
-        public Renderer[] Bg;
-        public Renderer BgBottom;
-        public Renderer Z;
+        public CellDisplay? Score;
+        public CellDisplay? BgTop;
+        public CellDisplay[] Fg;
+        public CellDisplay[] Bg;
+        public CellDisplay? BgBottom;
+        public CellDisplay? Z;
         public TextMeshPro[] Hint;
+    }
+
+    private struct CellDisplay
+    {
+        public Renderer Renderer;
+        public Vector4 TilingOffset;
     }
 
     [Serializable]
@@ -41,11 +47,14 @@ public class GameController : MonoBehaviour
     public GameObject mockGyroscope;
     public GameObject colorsBtnText;
     public GameObject snapBtnText;
+    public GameObject hintBtnText;
+    public GameObject textureBtnText;
+    public Texture2D[] faces;
+    private float closeEnough = 0.5f;
 
     // config
     private const int Notches = 5;
     private const int HoldForToScore = 30;
-    private const float CloseEnough = 0.2f;
     private const int RainbowRepeatsPitch = 3;
     private const int RainbowRepeatsRoll = 4;
     private int colorSet = -1;
@@ -56,9 +65,13 @@ public class GameController : MonoBehaviour
     private int heldFor;
     private float[] rawInputs;
     private static readonly int Color1 = Shader.PropertyToID("_Color");
+    private static readonly int MainTex = Shader.PropertyToID("_MainTex");
+    private static readonly int MainTexSt = Shader.PropertyToID("_MainTex_ST");
     private bool scorePushed;
     private Challenger.Cell[] cells;
     private float snapMode;
+    private int hintMode;
+    private int textureMode;
     private bool updateLayout = true;
     private const int ShreddedCells = 30;
 
@@ -70,7 +83,9 @@ public class GameController : MonoBehaviour
 
     public void Update()
     {
-        if (pgRefs.BgTop == null || updateLayout || heldFor >= HoldForToScore || scorePushed)
+        if (!pgRefs.BgTop.HasValue || pgRefs.BgTop.Value.Renderer == null || updateLayout ||
+            heldFor >= HoldForToScore ||
+            scorePushed)
         {
             if (heldFor >= HoldForToScore || scorePushed)
             {
@@ -78,11 +93,12 @@ public class GameController : MonoBehaviour
                 Handheld.Vibrate();
             }
 
-            if (pgRefs.BgTop == null || updateLayout)
+            if (!pgRefs.BgTop.HasValue || pgRefs.BgTop.Value.Renderer == null || updateLayout)
             {
                 updateLayout = false;
                 DeleteRenderers();
                 BuildMeshes();
+                faces = new Texture2D[Notches];
             }
 
             heldFor = 0;
@@ -96,20 +112,43 @@ public class GameController : MonoBehaviour
             {
                 cells = Challenger.GetChallenge(cellCount, Notches, new List<int> { 0, 1, 2, 0, 1, 2 });
             }
+
+            var used = new Dictionary<int, bool>();
+            for (var i = 0; i < Notches; i++)
+            {
+                var start = 74433;
+                var end = 75275;
+                var r = RandIntn(1 + end - start) + start;
+                while (used.ContainsKey(r))
+                {
+                    r++;
+                    if (r >= end)
+                    {
+                        r = 0;
+                    }
+                }
+
+                used[r] = true;
+
+                faces[i] = Resources.Load<Texture2D>("Faces/" + r.ToString("000000"));
+            }
         }
 
         for (var i = 0; i < cellCount; i++)
         {
             var target = cells[i].Target;
+            var cellColor = Colors.CellColor(target, Notches, colorSets, colorSet);
+            var cellTexture = Colors.CellTexture(target, Notches, faces);
+
             if (i == 0)
             {
-                SetMeshColor(pgRefs.BgTop, Colors.CellColor(target, Notches, colorSets, colorSet));
+                SetRenderProps(pgRefs.BgTop.Value, cellColor, cellTexture, textureMode);
             }
 
-            SetMeshColor(pgRefs.Bg[i], Colors.CellColor(target, Notches, colorSets, colorSet));
+            SetRenderProps(pgRefs.Bg[i], cellColor, cellTexture, textureMode);
             if (i + 1 == cellCount)
             {
-                SetMeshColor(pgRefs.BgBottom, Colors.CellColor(target, Notches, colorSets, colorSet));
+                SetRenderProps(pgRefs.BgBottom.Value, cellColor, cellTexture, textureMode);
             }
         }
 
@@ -143,18 +182,17 @@ public class GameController : MonoBehaviour
 
         for (var i = 0; i < cellCount; i++)
         {
-            SetMeshColor(pgRefs.Fg[i], Colors.CellColor(values[i], Notches, colorSets, colorSet));
+            SetRenderProps(pgRefs.Fg[i], Colors.CellColor(values[i], Notches, colorSets, colorSet),
+                Colors.CellTexture(values[i], Notches, faces), textureMode);
         }
 
-        // SetMeshColor(pr.Score, colorSets[colorSet].colors[1]);
-
-        SetMeshColor(pgRefs.Z, Color.black);
+        SetRenderProps(pgRefs.Z.Value, Color.black, Texture2D.whiteTexture, 1);
 
         var scoring = true;
         for (var i = 0; i < cellCount; i++)
         {
-            if (Mathf.Abs(values[i] - cells[i].Target) > CloseEnough &&
-                (cells[i].Target != 0 || Mathf.Abs(values[i] - Notches) > CloseEnough))
+            if (Mathf.Abs(values[i] - cells[i].Target) > closeEnough &&
+                (cells[i].Target != 0 || Mathf.Abs(values[i] - Notches) > closeEnough))
             {
                 scoring = false;
                 pgRefs.Hint[i].SetText((cells[i].Input % 9) switch
@@ -169,6 +207,12 @@ public class GameController : MonoBehaviour
                     7 => "--",
                     _ => "O-",
                 });
+                pgRefs.Hint[i].color = hintMode switch
+                {
+                    0 => Color.black,
+                    1 => Color.white,
+                    _ => Color.clear
+                };
             }
             else
             {
@@ -184,6 +228,17 @@ public class GameController : MonoBehaviour
         {
             heldFor = 0;
         }
+    }
+
+    private static int RandIntn(int n)
+    {
+        var x = Mathf.FloorToInt(UnityEngine.Random.Range(0, n));
+        if (x >= n)
+        {
+            x = 0;
+        }
+
+        return x;
     }
 
     private void DeleteRenderers()
@@ -223,16 +278,19 @@ public class GameController : MonoBehaviour
         var topHeight = (backgroundHeight - foregroundHeight) / 2;
         var scoreHeight = topHeight / 5;
         var trans = playground.transform;
+        var photoWidthPercent = 218 / backgroundHeight / 178;
 
         //     new Vector3(7f / 8, scoreHeight, 1));
         //     new Vector3(0, backgroundHeight / 2 - scoreHeight / 2 - 1f / 5, 0.001f),
         // pr.Score = BuildMesh(trans, "Score", PrimitiveType.Quad,
         pgRefs.BgTop = BuildPrimitive(trans, "Bg Top", PrimitiveType.Quad,
             new Vector3(0, foregroundHeight / 2 + topHeight / 2 - overlap / 2, 0.003f),
-            new Vector3(1, topHeight + overlap, 1));
-        pgRefs.Fg = new Renderer[cellCount];
+            new Vector3(1, topHeight + overlap, 1),
+            new Vector4(photoWidthPercent, topHeight / backgroundHeight, (1 - photoWidthPercent) / 2,
+                1 - topHeight / backgroundHeight));
+        pgRefs.Fg = new CellDisplay[cellCount];
         pgRefs.Hint = new TextMeshPro[cellCount];
-        pgRefs.Bg = new Renderer[cellCount];
+        pgRefs.Bg = new CellDisplay[cellCount];
 
         switch (layout)
         {
@@ -250,23 +308,32 @@ public class GameController : MonoBehaviour
 
                 pgRefs.Fg[0] = BuildPrimitive(trans, "Fg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, oneHeight, 1));
+                    new Vector3(foregroundWidth, oneHeight, 1),
+                    new Vector4(foregroundWidth * photoWidthPercent, oneHeight / backgroundHeight,
+                        (1 - foregroundWidth * photoWidthPercent) / 2,
+                        1 - topHeight / backgroundHeight - oneHeight / backgroundHeight));
                 pgRefs.Hint[0] = BuildTMP(trans, "Hint 01", PrimitiveType.Quad,
                     new Vector3(foregroundWidth / 2 - 1 / 10f, 1 / 10f + restHeight - foregroundHeight / 2, 0),
                     new Vector3(.1f, .14f, .1f));
                 pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1));
+                    new Vector3(1, oneHeight, 1),
+                    new Vector4(photoWidthPercent, oneHeight / backgroundHeight, (1 - photoWidthPercent) / 2,
+                        1 - topHeight / backgroundHeight - oneHeight / backgroundHeight));
 
                 pgRefs.Fg[1] = BuildPrimitive(trans, "Fg 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, restHeight, 1));
+                    new Vector3(foregroundWidth, restHeight, 1),
+                    new Vector4(foregroundWidth * photoWidthPercent, restHeight / backgroundHeight,
+                        (1 - foregroundWidth * photoWidthPercent) / 2, topHeight / backgroundHeight));
                 pgRefs.Hint[1] = BuildTMP(trans, "Hint 02", PrimitiveType.Quad,
                     new Vector3(foregroundWidth / 2 - 1 / 10f, 1 / 10f - foregroundHeight / 2, 0),
                     new Vector3(.1f, .14f, .1f));
                 pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1));
+                    new Vector3(1, restHeight, 1),
+                    new Vector4(photoWidthPercent, restHeight / backgroundHeight, (1 - photoWidthPercent) / 2,
+                        topHeight / backgroundHeight));
                 break;
             }
             case 1:
@@ -282,7 +349,7 @@ public class GameController : MonoBehaviour
                     new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
                 pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1));
+                    new Vector3(1, oneHeight, 1), new Vector4(1, 1, 0, 0));
 
                 pgRefs.Fg[1] = BuildTrapezium(trans, "Fg 02",
                     new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.001f),
@@ -292,7 +359,7 @@ public class GameController : MonoBehaviour
                     new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
                 pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1));
+                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
                 break;
             }
             case 2:
@@ -302,33 +369,33 @@ public class GameController : MonoBehaviour
 
                 pgRefs.Fg[0] = BuildPrimitive(trans, "Fg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, oneHeight, 1));
+                    new Vector3(foregroundWidth, oneHeight, 1), new Vector4(1, 1, 0, 0));
                 pgRefs.Hint[0] = BuildTMP(trans, "Hint 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0),
                     new Vector3(.1f, .14f, 1));
                 pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1));
+                    new Vector3(1, oneHeight, 1), new Vector4(1, 1, 0, 0));
 
                 pgRefs.Fg[1] = BuildPrimitive(trans, "Fg 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, restHeight, 1));
+                    new Vector3(foregroundWidth, restHeight, 1), new Vector4(1, 1, 0, 0));
                 pgRefs.Hint[1] = BuildTMP(trans, "Hint 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0),
                     new Vector3(.1f, .14f, 1));
                 pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1));
+                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
 
                 pgRefs.Fg[2] = BuildPrimitive(trans, "Fg 03", PrimitiveType.Quad,
                     new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, restHeight, 1));
+                    new Vector3(foregroundWidth, restHeight, 1), new Vector4(1, 1, 0, 0));
                 pgRefs.Hint[2] = BuildTMP(trans, "Hint 03", PrimitiveType.Quad,
                     new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0),
                     new Vector3(.1f, .14f, 1));
                 pgRefs.Bg[2] = BuildPrimitive(trans, "Bg 03", PrimitiveType.Quad,
                     new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1));
+                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
                 break;
             }
             case 3:
@@ -344,7 +411,7 @@ public class GameController : MonoBehaviour
                     new Vector3(.1f, .14f, 1));
                 pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
                     new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1));
+                    new Vector3(1, oneHeight, 1), new Vector4(1, 1, 0, 0));
 
                 pgRefs.Fg[1] = BuildTrapezium(trans, "Fg 02",
                     new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.001f),
@@ -355,7 +422,7 @@ public class GameController : MonoBehaviour
                     new Vector3(.1f, .14f, 1));
                 pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
                     new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1));
+                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
 
                 pgRefs.Fg[2] = BuildTrapezium(trans, "Fg 03",
                     new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0.001f),
@@ -366,7 +433,7 @@ public class GameController : MonoBehaviour
                     new Vector3(.1f, .14f, 1));
                 pgRefs.Bg[2] = BuildPrimitive(trans, "Bg 03", PrimitiveType.Quad,
                     new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1));
+                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
                 break;
             }
             case 4:
@@ -376,14 +443,14 @@ public class GameController : MonoBehaviour
                     pgRefs.Fg[i] = BuildPrimitive(trans, "Fg " + (i + 1).ToString("D2"), PrimitiveType.Quad,
                         new Vector3(0, foregroundHeight / 2 - (1 + 2 * i) * foregroundHeight / (2 * ShreddedCells),
                             0.001f),
-                        new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
+                        new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1), new Vector4(1, 1, 0, 0));
                     pgRefs.Hint[i] = BuildTMP(trans, "Hint " + (i + 1).ToString("D2"), PrimitiveType.Quad,
                         new Vector3(-10, -10, 0.001f),
                         new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
                     pgRefs.Bg[i] = BuildPrimitive(trans, "Bg " + (i + 1).ToString("D2"), PrimitiveType.Quad,
                         new Vector3(0, foregroundHeight / 2 - (1 + 2 * i) * foregroundHeight / (2 * ShreddedCells),
                             0.002f),
-                        new Vector3(1, foregroundHeight / ShreddedCells, 1));
+                        new Vector3(1, foregroundHeight / ShreddedCells, 1), new Vector4(1, 1, 0, 0));
                 }
 
                 break;
@@ -392,13 +459,14 @@ public class GameController : MonoBehaviour
 
         pgRefs.BgBottom = BuildPrimitive(trans, "Bg Bottom", PrimitiveType.Quad,
             new Vector3(0, -foregroundHeight / 2 - topHeight / 2 + overlap / 2, 0.003f),
-            new Vector3(1, topHeight + overlap, 1));
+            new Vector3(1, topHeight + overlap, 1),
+            new Vector4(photoWidthPercent, topHeight / backgroundHeight, (1 - photoWidthPercent) / 2, 0));
 
         pgRefs.Z = BuildPrimitive(trans, "Z", PrimitiveType.Cube, new Vector3(0, 0, 0.06f),
-            new Vector3(1.15f, backgroundHeight + 0.15f, 0.1f));
+            new Vector3(1.15f, backgroundHeight + 0.15f, 0.1f), new Vector4(1, 1, 0, 0));
     }
 
-    private static Renderer BuildTriangle(Transform trans, string name, Vector3 localPosition, float width,
+    private static CellDisplay BuildTriangle(Transform trans, string name, Vector3 localPosition, float width,
         float height)
     {
         var go = new GameObject
@@ -453,10 +521,14 @@ public class GameController : MonoBehaviour
         mesh.uv = uv;
 
         meshFilter.mesh = mesh;
-        return meshRenderer;
+        return new CellDisplay
+        {
+            Renderer = meshRenderer,
+            TilingOffset = new Vector4(1, 1, 0, 0)
+        };
     }
 
-    private static Renderer BuildTrapezium(Transform trans, string name, Vector3 localPosition, float topWidth,
+    private static CellDisplay BuildTrapezium(Transform trans, string name, Vector3 localPosition, float topWidth,
         float bottomWidth, float height)
     {
         var go = new GameObject
@@ -514,12 +586,16 @@ public class GameController : MonoBehaviour
         mesh.uv = uv;
 
         meshFilter.mesh = mesh;
-        return meshRenderer;
+        return new CellDisplay
+        {
+            Renderer = meshRenderer,
+            TilingOffset = new Vector4(1, 1, 0, 0)
+        };
     }
 
-    private static Renderer BuildPrimitive(Transform trans, string name, PrimitiveType pt,
+    private static CellDisplay BuildPrimitive(Transform trans, string name, PrimitiveType pt,
         Vector3 localPosition,
-        Vector3 localScale)
+        Vector3 localScale, Vector4 tilingOffset)
     {
         var go = GameObject.CreatePrimitive(pt);
         go.name = name;
@@ -532,12 +608,15 @@ public class GameController : MonoBehaviour
 
         var rend = go.GetComponent<Renderer>();
         rend.sharedMaterial = Resources.Load<Material>("Materials/ThomasMountain");
-        return rend;
+        return new CellDisplay
+        {
+            Renderer = rend,
+            TilingOffset = tilingOffset
+        };
     }
 
     private static TextMeshPro BuildTMP(Transform trans, string name, PrimitiveType pt,
-        Vector3 localPosition,
-        Vector3 localScale)
+        Vector3 localPosition, Vector3 localScale)
     {
         var go = new GameObject
         {
@@ -555,7 +634,7 @@ public class GameController : MonoBehaviour
         tmp.UpdateFontAsset();
         tmp.fontSize = 8;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.black;
+
         tmp.autoSizeTextContainer = true;
 
         var rt = go.GetComponent<RectTransform>();
@@ -564,11 +643,23 @@ public class GameController : MonoBehaviour
         return tmp;
     }
 
-    private static void SetMeshColor(Renderer r, Color color)
+    private static void SetRenderProps(CellDisplay cd, Color color, Texture2D t, int textureMode)
     {
         var propBlock = new MaterialPropertyBlock();
-        propBlock.SetColor(Color1, color);
-        r.SetPropertyBlock(propBlock);
+        if (textureMode == 0)
+        {
+            propBlock.SetColor(Color1, Color.white);
+            propBlock.SetTexture(MainTex, t);
+            propBlock.SetVector(MainTexSt, cd.TilingOffset);
+        }
+        else
+        {
+            propBlock.SetColor(Color1, color);
+            propBlock.SetTexture(MainTex, Texture2D.whiteTexture);
+            propBlock.SetVector(MainTexSt, new Vector4(1, 1, 0, 0));
+        }
+
+        cd.Renderer.SetPropertyBlock(propBlock);
     }
 
     private static float GetVal(float rawVal, Challenger.Cell cell, int notches, float snapMode)
@@ -643,6 +734,43 @@ public class GameController : MonoBehaviour
     public void OnScoreButtonPress()
     {
         scorePushed = true;
+    }
+
+    public void OnHintButtonPress()
+    {
+        var tmp = hintBtnText.GetComponentInChildren<TextMeshProUGUI>();
+        switch (hintMode)
+        {
+            case 0:
+                hintMode = 1;
+                tmp.SetText("HINT W");
+                break;
+            case 1:
+                hintMode = 2;
+                tmp.SetText("HINT OFF");
+                break;
+            default:
+                hintMode = 0;
+                tmp.SetText("HINT B");
+                break;
+        }
+    }
+
+    public void OnTextureButtonPress()
+    {
+        var tmp = textureBtnText.GetComponentInChildren<TextMeshProUGUI>();
+        if (textureMode == 0)
+        {
+            textureMode = 1;
+            closeEnough = .2f;
+            tmp.SetText("TEXTURE OFF");
+        }
+        else
+        {
+            textureMode = 0;
+            closeEnough = .5f;
+            tmp.SetText("TEXTURE ON");
+        }
     }
 
     public void OnSnapButtonPress()
