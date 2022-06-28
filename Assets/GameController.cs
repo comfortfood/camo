@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 
@@ -56,11 +57,11 @@ public class GameController : MonoBehaviour
     private const int Notches = 5;
     private const int HoldForToScore = 30;
     private const int RainbowRepeatsPitch = 3;
-    private const int RainbowRepeatsRoll = 4;
+    private const int RainbowRepeatsRoll = 5;
+    private const int RainbowRepeatsYaw = 5;
     private int colorSet = -1;
     private int cellCount = 2;
     private int layout;
-    private const int RainbowRepeatsYaw = 5;
     private int score;
     private int heldFor;
     private float[] rawInputs;
@@ -298,15 +299,32 @@ public class GameController : MonoBehaviour
         pgRefs.Bg = new CellDisplay[cellCount];
         pgRefs.Fg = new CellDisplay[cellCount];
         pgRefs.Hint = new TextMeshPro[cellCount];
-        var stripes = backgroundRows[1].DivideByHeight(new[] { 2 / 3f });
-        for (var s = 0; s < stripes.Length; s++)
+        Dimensions.Box[] stripes;
+        switch (layout)
+        {
+            case 0:
+            case 1:
+                stripes = backgroundRows[1].DivideByHeight(new[] { 2 / 3f });
+                break;
+            case 2:
+            case 3:
+                stripes = backgroundRows[1].DivideByHeight(new[] { 1f / 4, 1.5f / 4, 1.5f / 4 });
+                break;
+            default:
+                stripes = backgroundRows[1].DivideByHeight(Enumerable.Repeat(1f / cellCount, cellCount).ToArray());
+                break;
+        }
+
+        for (var s = 0; s < cellCount; s++)
         {
             var stripe = stripes[s].DivideByWidth(new[] { .125f, .75f });
             stripe[0].Width = stripes[s].Width;
             stripe[0].X = stripes[s].X;
             stripe[0].TiOff.x = 1;
-            pgRefs.Bg[s] = BuildPrimitive(trans, "Bg " + (s + 1).ToString("00"), PrimitiveType.Quad, stripe[0], 0.002f);
-            pgRefs.Fg[s] = BuildPrimitive(trans, "Fg " + (s + 1).ToString("00"), PrimitiveType.Quad, stripe[1], 0.001f);
+            pgRefs.Bg[s] = BuildPrimitive(trans, "Bg " + (s + 1).ToString("00"), PrimitiveType.Quad, stripe[0],
+                0.002f);
+            pgRefs.Fg[s] = BuildPrimitive(trans, "Fg " + (s + 1).ToString("00"), PrimitiveType.Quad, stripe[1],
+                0.001f);
             var hint = new Dimensions.Box
             {
                 Height = .14f,
@@ -314,6 +332,11 @@ public class GameController : MonoBehaviour
                 X = stripe[1].X + stripe[1].Width / 2 - .1f,
                 Y = stripe[1].Y - stripe[1].Height / 2 + .12f,
             };
+            if (cellCount == ShreddedCells)
+            {
+                hint.X -= 10;
+            }
+
             pgRefs.Hint[s] = BuildTMP(trans, "Hint " + (s + 1).ToString("00"), hint, 0);
         }
     }
