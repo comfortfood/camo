@@ -267,203 +267,55 @@ public class GameController : MonoBehaviour
 
     private void BuildMeshes()
     {
-        const float goldenRatio = 1.618f;
-        const float overlap = 0.01f;
-        const float foregroundWidth = 3f / 4;
-        const float foregroundHeight = foregroundWidth * goldenRatio;
-
         var displayWidth = Screen.width;
         var displayHeight = Screen.height;
-        var backgroundHeight = 1f / displayWidth * displayHeight;
-        var topHeight = (backgroundHeight - foregroundHeight) / 2;
-        var scoreHeight = topHeight / 5;
-        var trans = playground.transform;
-        var photoWidthPercent = 218 / backgroundHeight / 178;
+        var background = new Dimensions.Box
+        {
+            Height = 1f / displayWidth * displayHeight,
+            Width = 1,
+            X = 0,
+            Y = 0,
+            TiOff = new Vector4(1, 1, 0, 0)
+        };
+        const float goldenRatio = 1.618f;
+        var backgroundRows = background.DivideByHeight(new[]
+        {
+            (1 - .75f * goldenRatio / background.Height) / 2,
+            .75f * goldenRatio / background.Height
+        });
 
-        //     new Vector3(7f / 8, scoreHeight, 1));
-        //     new Vector3(0, backgroundHeight / 2 - scoreHeight / 2 - 1f / 5, 0.001f),
-        // pr.Score = BuildMesh(trans, "Score", PrimitiveType.Quad,
-        pgRefs.BgTop = BuildPrimitive(trans, "Bg Top", PrimitiveType.Quad,
-            new Vector3(0, foregroundHeight / 2 + topHeight / 2 - overlap / 2, 0.003f),
-            new Vector3(1, topHeight + overlap, 1),
-            new Vector4(photoWidthPercent, topHeight / backgroundHeight, (1 - photoWidthPercent) / 2,
-                1 - topHeight / backgroundHeight));
+        var trans = playground.transform;
+
+        pgRefs.Z = BuildPrimitive(trans, "Z", PrimitiveType.Cube, new Dimensions.Box
+        {
+            Height = background.Height + .15f,
+            Width = 1.15f
+        }, 0.06f);
+
+        pgRefs.BgTop = BuildPrimitive(trans, "Bg Top", PrimitiveType.Quad, backgroundRows[0], .003f);
+        pgRefs.BgBottom = BuildPrimitive(trans, "Bg Bottom", PrimitiveType.Quad, backgroundRows[2], 0.003f);
+
+        pgRefs.Bg = new CellDisplay[cellCount];
         pgRefs.Fg = new CellDisplay[cellCount];
         pgRefs.Hint = new TextMeshPro[cellCount];
-        pgRefs.Bg = new CellDisplay[cellCount];
-
-        switch (layout)
+        var stripes = backgroundRows[1].DivideByHeight(new[] { 2 / 3f });
+        for (var s = 0; s < stripes.Length; s++)
         {
-            // if (cells == 1)
-            // {
-            //     BuildMesh(trans, "Fg 01", PrimitiveType.Quad, new Vector3(0, 0, 0.001f),
-            //         new Vector3(foregroundWidth, foregroundHeight, 1));
-            //     BuildMesh(trans, "Bg 01", PrimitiveType.Quad, new Vector3(0, 0, 0.002f),
-            //         new Vector3(1, foregroundHeight, 1));
-            // } else 
-            case 0:
+            var stripe = stripes[s].DivideByWidth(new[] { .125f, .75f });
+            stripe[0].Width = stripes[s].Width;
+            stripe[0].X = stripes[s].X;
+            stripe[0].TiOff.x = 1;
+            pgRefs.Bg[s] = BuildPrimitive(trans, "Bg " + (s + 1).ToString("00"), PrimitiveType.Quad, stripe[0], 0.002f);
+            pgRefs.Fg[s] = BuildPrimitive(trans, "Fg " + (s + 1).ToString("00"), PrimitiveType.Quad, stripe[1], 0.001f);
+            var hint = new Dimensions.Box
             {
-                var restHeight = 2f * backgroundHeight / 5 - topHeight;
-                var oneHeight = foregroundHeight - restHeight;
-
-                pgRefs.Fg[0] = BuildPrimitive(trans, "Fg 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, oneHeight, 1),
-                    new Vector4(foregroundWidth * photoWidthPercent, oneHeight / backgroundHeight,
-                        (1 - foregroundWidth * photoWidthPercent) / 2,
-                        1 - topHeight / backgroundHeight - oneHeight / backgroundHeight));
-                pgRefs.Hint[0] = BuildTMP(trans, "Hint 01", PrimitiveType.Quad,
-                    new Vector3(foregroundWidth / 2 - 1 / 10f, 1 / 10f + restHeight - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, .1f));
-                pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1),
-                    new Vector4(photoWidthPercent, oneHeight / backgroundHeight, (1 - photoWidthPercent) / 2,
-                        1 - topHeight / backgroundHeight - oneHeight / backgroundHeight));
-
-                pgRefs.Fg[1] = BuildPrimitive(trans, "Fg 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, restHeight, 1),
-                    new Vector4(foregroundWidth * photoWidthPercent, restHeight / backgroundHeight,
-                        (1 - foregroundWidth * photoWidthPercent) / 2, topHeight / backgroundHeight));
-                pgRefs.Hint[1] = BuildTMP(trans, "Hint 02", PrimitiveType.Quad,
-                    new Vector3(foregroundWidth / 2 - 1 / 10f, 1 / 10f - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, .1f));
-                pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1),
-                    new Vector4(photoWidthPercent, restHeight / backgroundHeight, (1 - photoWidthPercent) / 2,
-                        topHeight / backgroundHeight));
-                break;
-            }
-            case 1:
-            {
-                var restHeight = 2f * backgroundHeight / 5 - topHeight;
-                var oneHeight = foregroundHeight - restHeight;
-
-                pgRefs.Fg[0] = BuildTriangle(trans, "Fg 01",
-                    new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.001f),
-                    foregroundWidth * oneHeight / foregroundHeight, oneHeight);
-                pgRefs.Hint[0] = BuildTMP(trans, "Hint 01", PrimitiveType.Quad,
-                    new Vector3(-10, -10, 0.001f),
-                    new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
-                pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1), new Vector4(1, 1, 0, 0));
-
-                pgRefs.Fg[1] = BuildTrapezium(trans, "Fg 02",
-                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.001f),
-                    foregroundWidth * oneHeight / foregroundHeight, foregroundWidth, restHeight);
-                pgRefs.Hint[1] = BuildTMP(trans, "Hint 02", PrimitiveType.Quad,
-                    new Vector3(-10, -10, 0.001f),
-                    new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
-                pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
-                break;
-            }
-            case 2:
-            {
-                var oneHeight = backgroundHeight / 3 - topHeight;
-                var restHeight = (foregroundHeight - oneHeight) / 2;
-
-                pgRefs.Fg[0] = BuildPrimitive(trans, "Fg 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, oneHeight, 1), new Vector4(1, 1, 0, 0));
-                pgRefs.Hint[0] = BuildTMP(trans, "Hint 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, 1));
-                pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1), new Vector4(1, 1, 0, 0));
-
-                pgRefs.Fg[1] = BuildPrimitive(trans, "Fg 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, restHeight, 1), new Vector4(1, 1, 0, 0));
-                pgRefs.Hint[1] = BuildTMP(trans, "Hint 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, 1));
-                pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
-
-                pgRefs.Fg[2] = BuildPrimitive(trans, "Fg 03", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0.001f),
-                    new Vector3(foregroundWidth, restHeight, 1), new Vector4(1, 1, 0, 0));
-                pgRefs.Hint[2] = BuildTMP(trans, "Hint 03", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, 1));
-                pgRefs.Bg[2] = BuildPrimitive(trans, "Bg 03", PrimitiveType.Quad,
-                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
-                break;
-            }
-            case 3:
-            {
-                var oneHeight = backgroundHeight / 3 - topHeight;
-                var restHeight = (foregroundHeight - oneHeight) / 2;
-
-                pgRefs.Fg[0] = BuildTriangle(trans, "Fg 01",
-                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.001f),
-                    foregroundWidth * oneHeight / foregroundHeight, oneHeight);
-                pgRefs.Hint[0] = BuildTMP(trans, "Hint 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, 1));
-                pgRefs.Bg[0] = BuildPrimitive(trans, "Bg 01", PrimitiveType.Quad,
-                    new Vector3(0, oneHeight / 2 + restHeight * 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, oneHeight, 1), new Vector4(1, 1, 0, 0));
-
-                pgRefs.Fg[1] = BuildTrapezium(trans, "Fg 02",
-                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.001f),
-                    foregroundWidth * oneHeight / foregroundHeight,
-                    foregroundWidth * (oneHeight + restHeight) / foregroundHeight, restHeight);
-                pgRefs.Hint[1] = BuildTMP(trans, "Hint 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, 1));
-                pgRefs.Bg[1] = BuildPrimitive(trans, "Bg 02", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 1.5f - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
-
-                pgRefs.Fg[2] = BuildTrapezium(trans, "Fg 03",
-                    new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0.001f),
-                    foregroundWidth * (oneHeight + restHeight) / foregroundHeight,
-                    foregroundWidth, restHeight);
-                pgRefs.Hint[2] = BuildTMP(trans, "Hint 03", PrimitiveType.Quad,
-                    new Vector3(0, restHeight * 0.5f - foregroundHeight / 2, 0),
-                    new Vector3(.1f, .14f, 1));
-                pgRefs.Bg[2] = BuildPrimitive(trans, "Bg 03", PrimitiveType.Quad,
-                    new Vector3(0, restHeight / 2 - foregroundHeight / 2, 0.002f),
-                    new Vector3(1, restHeight, 1), new Vector4(1, 1, 0, 0));
-                break;
-            }
-            case 4:
-            {
-                for (var i = 0; i < ShreddedCells; i++)
-                {
-                    pgRefs.Fg[i] = BuildPrimitive(trans, "Fg " + (i + 1).ToString("D2"), PrimitiveType.Quad,
-                        new Vector3(0, foregroundHeight / 2 - (1 + 2 * i) * foregroundHeight / (2 * ShreddedCells),
-                            0.001f),
-                        new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1), new Vector4(1, 1, 0, 0));
-                    pgRefs.Hint[i] = BuildTMP(trans, "Hint " + (i + 1).ToString("D2"), PrimitiveType.Quad,
-                        new Vector3(-10, -10, 0.001f),
-                        new Vector3(foregroundWidth, foregroundHeight / ShreddedCells, 1));
-                    pgRefs.Bg[i] = BuildPrimitive(trans, "Bg " + (i + 1).ToString("D2"), PrimitiveType.Quad,
-                        new Vector3(0, foregroundHeight / 2 - (1 + 2 * i) * foregroundHeight / (2 * ShreddedCells),
-                            0.002f),
-                        new Vector3(1, foregroundHeight / ShreddedCells, 1), new Vector4(1, 1, 0, 0));
-                }
-
-                break;
-            }
+                Height = .14f,
+                Width = .1f,
+                X = stripe[1].X + stripe[1].Width / 2 - .1f,
+                Y = stripe[1].Y - stripe[1].Height / 2 + .12f,
+            };
+            pgRefs.Hint[s] = BuildTMP(trans, "Hint " + (s + 1).ToString("00"), hint, 0);
         }
-
-        pgRefs.BgBottom = BuildPrimitive(trans, "Bg Bottom", PrimitiveType.Quad,
-            new Vector3(0, -foregroundHeight / 2 - topHeight / 2 + overlap / 2, 0.003f),
-            new Vector3(1, topHeight + overlap, 1),
-            new Vector4(photoWidthPercent, topHeight / backgroundHeight, (1 - photoWidthPercent) / 2, 0));
-
-        pgRefs.Z = BuildPrimitive(trans, "Z", PrimitiveType.Cube, new Vector3(0, 0, 0.06f),
-            new Vector3(1.15f, backgroundHeight + 0.15f, 0.1f), new Vector4(1, 1, 0, 0));
     }
 
     private static CellDisplay BuildTriangle(Transform trans, string name, Vector3 localPosition, float width,
@@ -593,15 +445,13 @@ public class GameController : MonoBehaviour
         };
     }
 
-    private static CellDisplay BuildPrimitive(Transform trans, string name, PrimitiveType pt,
-        Vector3 localPosition,
-        Vector3 localScale, Vector4 tilingOffset)
+    private static CellDisplay BuildPrimitive(Transform trans, string name, PrimitiveType pt, Dimensions.Box b, float z)
     {
         var go = GameObject.CreatePrimitive(pt);
         go.name = name;
         go.transform.parent = trans;
-        go.transform.localPosition = localPosition;
-        go.transform.localScale = localScale;
+        go.transform.localPosition = new Vector3(b.X, b.Y, z);
+        go.transform.localScale = new Vector3(b.Width, b.Height, .1f);
 
         var collider = go.GetComponent<Collider>();
         DestroyImmediate(collider);
@@ -611,12 +461,11 @@ public class GameController : MonoBehaviour
         return new CellDisplay
         {
             Renderer = rend,
-            TilingOffset = tilingOffset
+            TilingOffset = b.TiOff
         };
     }
 
-    private static TextMeshPro BuildTMP(Transform trans, string name, PrimitiveType pt,
-        Vector3 localPosition, Vector3 localScale)
+    private static TextMeshPro BuildTMP(Transform trans, string name, Dimensions.Box b, float z)
     {
         var go = new GameObject
         {
@@ -624,8 +473,8 @@ public class GameController : MonoBehaviour
             transform =
             {
                 parent = trans,
-                localPosition = localPosition,
-                localScale = localScale
+                localPosition = new Vector3(b.X, b.Y, z),
+                localScale = new Vector3(b.Width, b.Height, .1f)
             }
         };
 
@@ -635,22 +484,39 @@ public class GameController : MonoBehaviour
         tmp.fontSize = 8;
         tmp.alignment = TextAlignmentOptions.Center;
 
-        tmp.autoSizeTextContainer = true;
-
         var rt = go.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(.73f, 1.02f);
+        rt.sizeDelta = new Vector2(rt.sizeDelta.x / rt.rect.width, rt.sizeDelta.y / rt.rect.height);
 
         return tmp;
     }
 
     private static void SetRenderProps(CellDisplay cd, Color color, Texture2D t, int textureMode)
     {
+        var displayWidth = Screen.width;
+        var displayHeight = Screen.height;
+        var backgroundHeight = 1f / displayWidth * displayHeight;
+        var photoWidthPercent = 218 / backgroundHeight / 178;
         var propBlock = new MaterialPropertyBlock();
         if (textureMode == 0)
         {
+            var xOffset = cd.TilingOffset.z;
+            if (xOffset == 0)
+            {
+                xOffset = (1 - photoWidthPercent) / 2;
+            }
+            else
+            {
+                xOffset = (xOffset - .5f) * photoWidthPercent + .5f;
+            }
+
             propBlock.SetColor(Color1, Color.white);
             propBlock.SetTexture(MainTex, t);
-            propBlock.SetVector(MainTexSt, cd.TilingOffset);
+            propBlock.SetVector(MainTexSt, new Vector4(
+                cd.TilingOffset.x * photoWidthPercent,
+                cd.TilingOffset.y,
+                xOffset,
+                cd.TilingOffset.w
+            ));
         }
         else
         {
@@ -769,7 +635,7 @@ public class GameController : MonoBehaviour
         {
             textureMode = 0;
             closeEnough = .5f;
-            tmp.SetText("TEXTURE ON");
+            tmp.SetText("TEXTURE\nON");
         }
     }
 
