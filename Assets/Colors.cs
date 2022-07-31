@@ -7,11 +7,13 @@ public static class Colors
     {
         if (colorSet == -1)
         {
-            return Color.HSVToRGB(val / notches, 1, 1);
+            return Color.HSVToRGB(val % notches / notches, 1, 1);
         }
 
-        var fColor = colorSets[colorSet].colors[(int)Math.Floor(val)];
-        var cColor = colorSets[colorSet].colors[(int)(Math.Ceiling(val) % notches)];
+        var floor = (int)Math.Floor(val);
+        var ceiling = (floor + 1) % notches;
+        var fColor = colorSets[colorSet].colors[floor];
+        var cColor = colorSets[colorSet].colors[ceiling];
         var f = 1 - val % 1f;
         var c = val % 1f;
         return new Color

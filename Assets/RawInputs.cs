@@ -2,7 +2,7 @@ using UnityEngine;
 
 public static class RawInputs
 {
-    public static float[] Get(float[] rawInputs, GameObject mockGyroscope)
+    public static float[] Get(float[] rawValues, GameObject mockGyroscope)
     {
         float pitch;
         float yaw;
@@ -45,7 +45,7 @@ public static class RawInputs
 
         var arr = new float[21];
 
-        if (rawInputs is not { Length: 21 })
+        if (rawValues is not { Length: 21 })
         {
             arr = new[]
             {
@@ -76,7 +76,7 @@ public static class RawInputs
         {
             for (var i = 0; i < 18; i++)
             {
-                arr[i] = rawInputs[i];
+                arr[i] = rawValues[i];
             }
 
             arr[18] = pitch;
@@ -85,12 +85,12 @@ public static class RawInputs
 
             for (var i = 0; i < 3; i++)
             {
-                var c = Mathf.Abs(arr[18 + i] - rawInputs[18 + i]);
+                var c = Mathf.Abs(arr[18 + i] - rawValues[18 + i]);
 
-                if (!(c > 0.002) || !(c < 0.998)) continue;
+                if (!(c > 0.003) || !(c < 0.997)) continue;
 
-                if ((c < 0.5 && arr[18 + i] > rawInputs[18 + i]) ||
-                    (c >= 0.5 && arr[18 + i] <= rawInputs[18 + i]))
+                if ((c < 0.5 && arr[18 + i] > rawValues[18 + i]) ||
+                    (c >= 0.5 && arr[18 + i] <= rawValues[18 + i]))
                 {
                     arr[0 + i] += c;
                     arr[3 + i] += c;
